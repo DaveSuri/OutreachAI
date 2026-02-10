@@ -14,10 +14,10 @@ export const campaignWorkflow = inngest.createFunction(
   {
     id: "campaign-workflow",
     concurrency: {
-      limit: 50
+      limit: 5
     },
     throttle: {
-      limit: 10,
+      limit: 5,
       period: "1m"
     }
   },

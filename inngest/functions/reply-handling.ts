@@ -9,7 +9,7 @@ export const replyHandlingWorkflow = inngest.createFunction(
   {
     id: "reply-handling",
     throttle: {
-      limit: 10,
+      limit: 5,
       period: "1m"
     }
   },

@@ -8,7 +8,7 @@ export const sendApprovedDraftWorkflow = inngest.createFunction(
   {
     id: "send-approved-draft",
     throttle: {
-      limit: 10,
+      limit: 5,
       period: "1m"
     }
   },
