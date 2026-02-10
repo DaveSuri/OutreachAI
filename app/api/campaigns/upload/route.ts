@@ -6,17 +6,19 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    // Dynamic imports to avoid build-time issues
-    const { prisma } = await import("@/lib/db/prisma");
-    const { events } = await import("@/lib/events");
-    const { inngest } = await import("@/lib/inngest");
-    
     const body = await request.json();
     const { campaignId, leads } = parseUploadPayload(body);
 
     if (leads.length === 0) {
       return NextResponse.json({ error: "No valid leads in payload" }, { status: 400 });
     }
+
+    // Dynamic imports to avoid build-time database connection
+    const [{ prisma }, { events }, { inngest }] = await Promise.all([
+      import("@/lib/db/prisma"),
+      import("@/lib/events"),
+      import("@/lib/inngest")
+    ]);
 
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
