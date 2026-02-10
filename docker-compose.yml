@@ -1,0 +1,21 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: outreachai-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: outreachai
+    ports:
+      - "55432:5432"
+    volumes:
+      - outreachai_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d outreachai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  outreachai_pg_data:

@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum CampaignType {
+  LINEAR
+}
+
+enum SequenceStepType {
+  EMAIL
+  WAIT
+  AI_RESEARCH
+}
+
+enum LeadStatus {
+  PENDING
+  IN_SEQUENCE
+  REPLIED
+  CONTACTED
+  COMPLETED
+}
+
+enum EmailDeliveryStatus {
+  sent
+  bounced
+  delivered
+}
+
+enum DraftStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+model Campaign {
+  id        String         @id @default(cuid())
+  name      String
+  status    CampaignStatus @default(DRAFT)
+  type      CampaignType   @default(LINEAR)
+  createdAt DateTime       @default(now())
+
+  leads         Lead[]
+  sequenceSteps SequenceStep[]
+}
+
+model SequenceStep {
+  id             String           @id @default(cuid())
+  campaignId     String
+  order          Int
+  type           SequenceStepType
+  template       String?
+  delayMinutes   Int?
+  researchPrompt String?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, order])
+}
+
+model Lead {
+  id              String     @id @default(cuid())
+  email           String
+  firstName       String?
+  lastName        String?
+  company         String?
+  campaignId      String
+  status          LeadStatus @default(PENDING)
+  engagementScore Int        @default(0)
+  aiContext       Json?
+  version         Int        @default(0)
+  repliedAt       DateTime?
+  lastEmailedAt   DateTime?
+  messageId       String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  campaign  Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  emailLogs EmailLog[]
+  drafts    DraftResponse[]
+  inboundEmails InboundEmail[]
+
+  @@unique([email, campaignId])
+  @@index([campaignId, status])
+  @@index([engagementScore])
+}
+
+model InboundEmail {
+  id                String   @id @default(cuid())
+  leadId            String
+  providerMessageId String   @unique
+  receivedAt        DateTime @default(now())
+  fromEmail         String
+  subject           String?
+  body              String   @db.Text
+  raw               Json?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, receivedAt])
+}
+
+model EmailLog {
+  id        String              @id @default(cuid())
+  leadId    String
+  sentAt    DateTime            @default(now())
+  subject   String
+  body      String              @db.Text
+  stepName  String
+  status    EmailDeliveryStatus
+  messageId String?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, sentAt])
+}
+
+model DraftResponse {
+  id               String      @id @default(cuid())
+  leadId           String
+  createdAt        DateTime    @default(now())
+  incomingEmail    String?     @db.Text
+  generatedSubject String
+  generatedBody    String      @db.Text
+  status           DraftStatus @default(PENDING_APPROVAL)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, status])
+}
