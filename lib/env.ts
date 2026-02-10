@@ -39,14 +39,14 @@ export const env = parsed.success
   ? parsed.data
   : {
       NODE_ENV: (process.env.NODE_ENV ?? "development") as "development" | "test" | "production",
-      DATABASE_URL: process.env.DATABASE_URL ?? "",
+      DATABASE_URL: process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:55432/outreachai",
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       GOOGLE_GEMINI_API_KEY: process.env.GOOGLE_GEMINI_API_KEY,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
       EMAIL_FROM: process.env.EMAIL_FROM,
       ALERT_EMAIL_TO: process.env.ALERT_EMAIL_TO,
-      INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
-      INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
+      INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY ?? "dev-event-key",
+      INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY ?? "dev-signing-key",
       APP_URL: process.env.APP_URL ?? "http://localhost:3000"
     };

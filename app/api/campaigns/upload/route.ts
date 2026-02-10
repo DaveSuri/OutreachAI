@@ -1,12 +1,16 @@
 import { CampaignStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
-import { events } from "@/lib/events";
-import { inngest } from "@/lib/inngest";
 import { parseUploadPayload } from "@/lib/schemas/upload";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    // Dynamic imports to avoid build-time issues
+    const { prisma } = await import("@/lib/db/prisma");
+    const { events } = await import("@/lib/events");
+    const { inngest } = await import("@/lib/inngest");
+    
     const body = await request.json();
     const { campaignId, leads } = parseUploadPayload(body);
 
