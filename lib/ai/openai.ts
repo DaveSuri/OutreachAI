@@ -52,42 +52,47 @@ export async function generateColdEmail(input: ColdEmailInput): Promise<{ subjec
     return fallbackEmail(input);
   }
 
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content:
-          "You write concise, high-conversion cold emails. Return strict JSON with keys subject and body."
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          lead: {
-            firstName: input.firstName,
-            lastName: input.lastName,
-            company: input.company
-          },
-          aiContext: input.aiContext ?? null,
-          template: templateOutput
-        })
-      }
-    ],
-    response_format: { type: "json_object" }
-  });
-
-  const raw = completion.choices[0]?.message?.content;
-  if (!raw) {
-    return fallbackEmail(input);
-  }
-
   try {
-    const parsed = JSON.parse(raw) as { subject: string; body: string };
-    return {
-      subject: parsed.subject,
-      body: parsed.body
-    };
-  } catch {
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You write concise, high-conversion cold emails. Return strict JSON with keys subject and body."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            lead: {
+              firstName: input.firstName,
+              lastName: input.lastName,
+              company: input.company
+            },
+            aiContext: input.aiContext ?? null,
+            template: templateOutput
+          })
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) {
+      return fallbackEmail(input);
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as { subject: string; body: string };
+      return {
+        subject: parsed.subject,
+        body: parsed.body
+      };
+    } catch {
+      return fallbackEmail(input);
+    }
+  } catch (error) {
+    console.error("OpenAI API error in generateColdEmail:", error);
     return fallbackEmail(input);
   }
 }
@@ -105,28 +110,40 @@ export async function analyzeReplySentiment(incomingEmail: string): Promise<"pos
     return "neutral";
   }
 
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: "Classify the sentiment of the email reply as positive, neutral, or negative. Return one word."
-      },
-      {
-        role: "user",
-        content: incomingEmail
-      }
-    ]
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "Classify the sentiment of the email reply as positive, neutral, or negative. Return one word."
+        },
+        {
+          role: "user",
+          content: incomingEmail
+        }
+      ]
+    });
 
-  const result = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? "neutral";
-  if (result.includes("positive")) {
-    return "positive";
+    const result = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? "neutral";
+    if (result.includes("positive")) {
+      return "positive";
+    }
+    if (result.includes("negative")) {
+      return "negative";
+    }
+    return "neutral";
+  } catch (error) {
+    console.error("OpenAI API error in analyzeReplySentiment:", error);
+    const lower = incomingEmail.toLowerCase();
+    if (lower.includes("not interested") || lower.includes("stop") || lower.includes("unsubscribe")) {
+      return "negative";
+    }
+    if (lower.includes("yes") || lower.includes("interested") || lower.includes("book")) {
+      return "positive";
+    }
+    return "neutral";
   }
-  if (result.includes("negative")) {
-    return "negative";
-  }
-  return "neutral";
 }
 
 export async function generateDraftResponse(input: DraftInput): Promise<{ subject: string; body: string }> {
@@ -138,35 +155,40 @@ export async function generateDraftResponse(input: DraftInput): Promise<{ subjec
     return { subject: defaultSubject, body: defaultBody };
   }
 
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content:
-          "Draft a concise sales follow-up reply. Return strict JSON with keys subject and body. Respect the lead's tone."
-      },
-      {
-        role: "user",
-        content: JSON.stringify(input)
-      }
-    ],
-    response_format: { type: "json_object" }
-  });
-
   try {
-    const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}") as {
-      subject?: string;
-      body?: string;
-    };
-    return {
-      subject: parsed.subject || defaultSubject,
-      body: parsed.body || defaultBody
-    };
-  } catch {
-    return {
-      subject: defaultSubject,
-      body: defaultBody
-    };
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Draft a concise sales follow-up reply. Return strict JSON with keys subject and body. Respect the lead's tone."
+        },
+        {
+          role: "user",
+          content: JSON.stringify(input)
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    try {
+      const parsed = JSON.parse(completion.choices[0]?.message?.content || "{}") as {
+        subject?: string;
+        body?: string;
+      };
+      return {
+        subject: parsed.subject || defaultSubject,
+        body: parsed.body || defaultBody
+      };
+    } catch {
+      return {
+        subject: defaultSubject,
+        body: defaultBody
+      };
+    }
+  } catch (error) {
+    console.error("OpenAI API error in generateDraftResponse:", error);
+    return { subject: defaultSubject, body: defaultBody };
   }
 }
