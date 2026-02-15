@@ -9,7 +9,8 @@ const sendDirectEmailSchema = z.object({
   template: z.string().optional(),
   subject: z.string().optional(),
   body: z.string().optional(),
-  useAI: z.boolean().default(false)
+  useAI: z.boolean().default(false),
+  demoMode: z.boolean().optional()
 });
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { leadId, template, subject, body: customBody, useAI } = sendDirectEmailSchema.parse(body);
+    const { leadId, template, subject, body: customBody, useAI, demoMode } = sendDirectEmailSchema.parse(body);
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -63,12 +64,22 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Send the email
-    const result = await sendEmail({
-      to: lead.email,
-      subject: emailSubject,
-      html: emailBody.replace(/\n/g, "<br />")
-    });
+    let result: { id: string | null; status: "sent" | "mocked" };
+    
+    // Demo mode - simulate sending without actually calling Resend
+    if (demoMode) {
+      result = {
+        id: `demo_${Date.now()}`,
+        status: "mocked"
+      };
+    } else {
+      // Send the email
+      result = await sendEmail({
+        to: lead.email,
+        subject: emailSubject,
+        html: emailBody.replace(/\n/g, "<br />")
+      });
+    }
 
     // Log the email
     await prisma.emailLog.create({
@@ -97,7 +108,8 @@ export async function POST(request: Request) {
       messageId: result.id,
       status: result.status,
       leadId,
-      subject: emailSubject
+      subject: emailSubject,
+      demoMode: demoMode || result.status === "mocked"
     });
 
   } catch (error) {

@@ -400,10 +400,36 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
         })
       });
       const result = await response.json();
+      
       if (!response.ok) {
+        // If real send fails, try demo mode as fallback
+        if (result.error && result.error.includes("can only send to")) {
+          const demoResponse = await fetch("/api/emails/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              leadId,
+              useAI,
+              demoMode: true,
+              template: useAI ? undefined : "Hi {{firstName}}, reaching out about {{company}}.",
+              subject: useAI ? undefined : "Quick idea for {{company}}"
+            })
+          });
+          const demoResult = await demoResponse.json();
+          if (demoResult.success) {
+            window.alert(`(Demo Mode) Email simulated successfully!\n\nTo send real emails, verify your domain at resend.com/domains`);
+            router.refresh();
+            return;
+          }
+        }
         throw new Error(result.error || "Send failed");
       }
-      window.alert(`Email sent successfully to lead!`);
+      
+      if (result.demoMode) {
+        window.alert(`(Demo Mode) Email simulated!\n\nTo send real emails, verify your domain at resend.com/domains`);
+      } else {
+        window.alert(`Email sent successfully to lead!`);
+      }
       router.refresh();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Send failed");
@@ -795,7 +821,7 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                                   onClick={() => sendDirectEmail(lead.id, true)}
                                   style={{ padding: '4px 8px', fontSize: '12px' }}
                                 >
-                                  Send AI
+                                  Send
                                 </button>
                               </td>
                               <td className="actions-cell">Ⅱ ↩</td>
