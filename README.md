@@ -1,6 +1,28 @@
-# OutreachAI (Mini-SaaS)
+# OutreachAI (Mini-Saas)
 
 Event-driven AI CRM for cold outreach built with Next.js, PostgreSQL, Prisma, Inngest, Resend, OpenAI, and Gemini.
+
+## Current Configuration
+
+### Database Connection
+Using PostgreSQL with Prisma. Connect to Neon (cloud) or local PostgreSQL.
+
+```bash
+# Local development - ensure PostgreSQL is running
+docker compose up -d postgres
+
+# Production - uses Neon PostgreSQL
+DATABASE_URL=postgresql://neondb_owner:password@host/neondb?sslmode=require
+```
+
+### Authentication
+Using Basic Auth (demo login). Integrate NextAuth or Clerk for production multi-user auth.
+
+```bash
+# Required for production
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=your-secure-password
+```
 
 ## Implemented Capabilities
 
