@@ -371,6 +371,45 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
     }
   }
 
+  async function activateCampaign(campaignId: string) {
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/activate`, {
+        method: "POST"
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Activation failed");
+      }
+      window.alert(`Campaign activated! ${result.leadsTriggered} leads are now being processed.`);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Activation failed");
+    }
+  }
+
+  async function sendDirectEmail(leadId: string, useAI: boolean = true) {
+    try {
+      const response = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId,
+          useAI,
+          template: useAI ? undefined : "Hi {{firstName}}, reaching out about {{company}}.",
+          subject: useAI ? undefined : "Quick idea for {{company}}"
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Send failed");
+      }
+      window.alert(`Email sent successfully to lead!`);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Send failed");
+    }
+  }
+
   async function uploadLeads() {
     if (!importCampaignId) {
       setImportMessage("Choose a campaign first.");
@@ -626,6 +665,16 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                         </div>
                         <div className="mode-tag">{modeLabel}</div>
                       </div>
+
+                      {campaign.status === "DRAFT" && campaign.leadsCount > 0 && (
+                        <button
+                          className="primary-btn"
+                          onClick={() => activateCampaign(campaign.id)}
+                          style={{ marginLeft: 12 }}
+                        >
+                          Activate
+                        </button>
+                      )}
                     </article>
                   );
                 })}
@@ -739,6 +788,15 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                               </td>
                               <td>
                                 <span className={statusClass(lead.status)}>{lead.status}</span>
+                              </td>
+                              <td>
+                                <button
+                                  className="primary-btn"
+                                  onClick={() => sendDirectEmail(lead.id, true)}
+                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                >
+                                  Send AI
+                                </button>
                               </td>
                               <td className="actions-cell">Ⅱ ↩</td>
                             </tr>
