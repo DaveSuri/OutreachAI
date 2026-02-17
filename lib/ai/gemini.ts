@@ -1,7 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+
+export type VoiceToolName = "get_dashboard_stats" | "query_hot_leads";
 
 type VoiceToolResult = {
-  toolName: "get_dashboard_stats" | "query_hot_leads";
+  toolName: VoiceToolName;
   payload: unknown;
 };
 
@@ -38,4 +40,52 @@ export async function generateVoiceAssistantResponse(userQuery: string, toolResu
 
   const result = await model.generateContent(prompt);
   return result.response.text();
+}
+
+export async function chooseVoiceToolWithGemini(userQuery: string): Promise<VoiceToolName | null> {
+  const client = getGeminiClient();
+  if (!client) {
+    return null;
+  }
+
+  const model = client.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    tools: [
+      {
+        functionDeclarations: [
+          {
+            name: "get_dashboard_stats",
+            description: "Get overall outreach KPIs including active campaigns, total leads, and reply rate.",
+            parameters: {
+              type: SchemaType.OBJECT,
+              properties: {}
+            }
+          },
+          {
+            name: "query_hot_leads",
+            description: "Get high-priority leads to call right now based on engagement and reply status.",
+            parameters: {
+              type: SchemaType.OBJECT,
+              properties: {}
+            }
+          }
+        ]
+      }
+    ]
+  });
+
+  const result = await model.generateContent(
+    `Decide the best tool for this CRM assistant request and call exactly one function.\nUser query: ${userQuery}`
+  );
+  const response = result.response as any;
+  const functionCalls =
+    typeof response.functionCalls === "function" ? response.functionCalls() : response.functionCalls;
+  const firstCall = Array.isArray(functionCalls) ? functionCalls[0] : null;
+  const name = firstCall?.name;
+
+  if (name === "get_dashboard_stats" || name === "query_hot_leads") {
+    return name;
+  }
+
+  return null;
 }

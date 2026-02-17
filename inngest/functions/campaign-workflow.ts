@@ -185,13 +185,19 @@ export const campaignWorkflow = inngest.createFunction(
       }
 
       if (sequenceStep.type === SequenceStepType.WAIT && sequenceStep.delayMinutes && sequenceStep.delayMinutes > 0) {
-        const interruptedByReply = await step.waitForEvent(`wait-reply-${sequenceStep.order}`, {
-          event: events.leadReplyReceived,
-          timeout: `${sequenceStep.delayMinutes}m`,
-          if: "async.data.leadId == event.data.leadId"
+        await step.sleep(`sleep-${sequenceStep.order}`, `${sequenceStep.delayMinutes}m`);
+
+        const postSleepLead = await step.run(`post-sleep-guard-${sequenceStep.order}`, async () => {
+          return prisma.lead.findUnique({
+            where: { id: leadId },
+            select: {
+              status: true,
+              repliedAt: true
+            }
+          });
         });
 
-        if (interruptedByReply) {
+        if (!postSleepLead || postSleepLead.status === LeadStatus.REPLIED || postSleepLead.repliedAt) {
           return {
             ok: true,
             interrupted: true,

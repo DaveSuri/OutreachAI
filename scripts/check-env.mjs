@@ -9,8 +9,8 @@ const mode = (modeFromArg || process.env.NODE_ENV || "development").toLowerCase(
 
 const REQUIRED_ALL = ["DATABASE_URL", "APP_URL"];
 const REQUIRED_PROD = [
-  "BASIC_AUTH_USERNAME",
-  "BASIC_AUTH_PASSWORD",
+  "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+  "CLERK_SECRET_KEY",
   "INNGEST_EVENT_KEY",
   "INNGEST_SIGNING_KEY",
   "RESEND_API_KEY",

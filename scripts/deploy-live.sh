@@ -67,8 +67,13 @@ if [[ -z "${DEPLOY_URL}" ]]; then
 fi
 
 echo "[3/6] Smoke testing production endpoint"
-curl -fsS "${DEPLOY_URL}/api/inngest" >/dev/null
-curl -fsS -u "${BASIC_AUTH_USERNAME}:${BASIC_AUTH_PASSWORD}" "${DEPLOY_URL}/api/stats" >/dev/null
+SMOKE_HEADERS=()
+if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+  SMOKE_HEADERS+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+fi
+
+curl -fsS "${SMOKE_HEADERS[@]}" "${DEPLOY_URL}/api/inngest" >/dev/null
+curl -fsS "${SMOKE_HEADERS[@]}" "${DEPLOY_URL}/api/stats" >/dev/null
 
 EXPECTED_APP_URL="${APP_URL%/}"
 if [[ "${EXPECTED_APP_URL}" != "${DEPLOY_URL}" ]]; then

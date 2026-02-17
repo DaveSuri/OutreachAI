@@ -252,6 +252,8 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
 
   const [importCampaignId, setImportCampaignId] = useState(data.campaigns[0]?.id ?? "");
   const [importCsv, setImportCsv] = useState(sampleCSV);
+  const [importFilename, setImportFilename] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
@@ -484,6 +486,17 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
     }
   }
 
+  async function loadCsvFile(file: File) {
+    try {
+      const text = await file.text();
+      setImportCsv(text);
+      setImportFilename(file.name);
+      setImportMessage(`Loaded ${file.name}`);
+    } catch {
+      setImportMessage("Unable to read CSV file.");
+    }
+  }
+
   async function approveDraft() {
     if (!selectedDraft) {
       return;
@@ -511,6 +524,32 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
       router.refresh();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Approval failed");
+    } finally {
+      setApprovalLoading(false);
+    }
+  }
+
+  async function rejectDraft() {
+    if (!selectedDraft) {
+      return;
+    }
+
+    setApprovalLoading(true);
+    try {
+      const response = await fetch(`/api/drafts/${selectedDraft.id}/reject`, {
+        method: "POST"
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to reject draft");
+      }
+
+      const remaining = drafts.filter((draft) => draft.id !== selectedDraft.id);
+      setDrafts(remaining);
+      setSelectedDraftId(remaining[0]?.id ?? null);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Reject failed");
     } finally {
       setApprovalLoading(false);
     }
@@ -925,7 +964,7 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                             </p>
                           </div>
                           <div className="review-actions">
-                            <button className="danger-link" type="button">
+                            <button className="danger-link" type="button" onClick={rejectDraft} disabled={approvalLoading}>
                               Reject
                             </button>
                             <button className="primary-btn" type="button" onClick={approveDraft} disabled={approvalLoading}>
@@ -968,6 +1007,37 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                       </option>
                     ))}
                   </select>
+                  <label
+                    className={`dropzone ${dragActive ? "drag-active" : ""}`}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setDragActive(false);
+                      const file = event.dataTransfer.files?.[0];
+                      if (!file) {
+                        return;
+                      }
+                      void loadCsvFile(file);
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          return;
+                        }
+                        void loadCsvFile(file);
+                      }}
+                    />
+                    <strong>Drag and drop CSV here</strong>
+                    <span>{importFilename ? `Loaded: ${importFilename}` : "or click to choose a .csv file"}</span>
+                  </label>
                   <textarea value={importCsv} onChange={(event) => setImportCsv(event.target.value)} />
                   <div className="import-row">
                     <button className="primary-btn" type="button" onClick={uploadLeads} disabled={importing}>

@@ -915,6 +915,26 @@ textarea {
   padding: 11px 12px;
 }
 
+.dropzone {
+  border: 1px dashed #bfc8e8;
+  border-radius: 12px;
+  padding: 14px;
+  background: #f7f9ff;
+  color: #5a6585;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.dropzone.drag-active {
+  border-color: #4d4be2;
+  background: #eef2ff;
+}
+
+.dropzone input {
+  display: none;
+}
+
 .import-row {
   display: flex;
   align-items: center;

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { generateVoiceAssistantResponse } from "@/lib/ai/gemini";
+import { chooseVoiceToolWithGemini, generateVoiceAssistantResponse, type VoiceToolName } from "@/lib/ai/gemini";
 import { getDashboardStats, queryHotLeads } from "@/lib/voice-tools";
 
-function chooseTool(query: string): "get_dashboard_stats" | "query_hot_leads" {
+function chooseToolHeuristic(query: string): VoiceToolName {
   const normalized = query.toLowerCase();
 
   if (
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Query is required" }, { status: 400 });
   }
 
-  const toolName = chooseTool(query);
+  const toolName = (await chooseVoiceToolWithGemini(query)) ?? chooseToolHeuristic(query);
   const payload =
     toolName === "get_dashboard_stats" ? await getDashboardStats() : await queryHotLeads();
 

@@ -16,13 +16,7 @@ DATABASE_URL=postgresql://neondb_owner:password@host/neondb?sslmode=require
 ```
 
 ### Authentication
-Using Basic Auth (demo login). Integrate NextAuth or Clerk for production multi-user auth.
-
-```bash
-# Required for production
-BASIC_AUTH_USERNAME=admin
-BASIC_AUTH_PASSWORD=your-secure-password
-```
+Using Clerk for sign-up/login and session management.
 
 ## Implemented Capabilities
 
@@ -104,24 +98,13 @@ npm run env:check:prod
 npm run build
 ```
 
-3. Set required production auth env vars.
-
-```bash
-export BASIC_AUTH_USERNAME="admin"
-export BASIC_AUTH_PASSWORD="change-me"
-```
-
-4. Start production server.
+3. Start production server.
 
 ```bash
 npm run start
 ```
 
-5. Access with basic auth credentials.
-
-```bash
-curl -u "$BASIC_AUTH_USERNAME:$BASIC_AUTH_PASSWORD" http://localhost:3000
-```
+4. Access app in browser and sign in via Clerk.
 
 ## Live Deploy (Vercel + Resend + Inngest)
 
@@ -143,8 +126,8 @@ Required variables for `npm run deploy:live`:
 
 - `DATABASE_URL`
 - `APP_URL` (must be `https://...`)
-- `BASIC_AUTH_USERNAME`
-- `BASIC_AUTH_PASSWORD`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
 - `INNGEST_EVENT_KEY`
 - `INNGEST_SIGNING_KEY`
 - `RESEND_API_KEY`
@@ -176,7 +159,7 @@ Optional:
 - `campaign-workflow`
   - Trigger: `campaign/start`
   - Handles `AI_RESEARCH`, `EMAIL`, and `WAIT` steps
-  - Wait step interruption: `lead/reply.received`
+  - Wait step is durable via `step.sleep()`, with post-sleep reply guard
 - `reply-handling`
   - Trigger: `lead/reply.received`
   - Sentiment analysis + draft generation + admin alert

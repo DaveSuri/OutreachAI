@@ -55,6 +55,27 @@ async function resendRequest(path, init = {}) {
   return parsedBody;
 }
 
+const webhookBodyVariants = (target, events) => [
+  { endpoint: target, enabled: true, events },
+  { url: target, enabled: true, events }
+];
+
+async function upsertWebhook(path, method, target, events) {
+  let lastError = null;
+  for (const payload of webhookBodyVariants(target, events)) {
+    try {
+      return await resendRequest(path, {
+        method,
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Unable to configure webhook.");
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -79,14 +100,7 @@ async function main() {
   const existing = webhooks.find((item) => typeof item?.url === "string" && item.url.replace(/\/+$/, "") === targetUrl);
 
   if (!existing) {
-    const created = await resendRequest("/webhooks", {
-      method: "POST",
-      body: JSON.stringify({
-        url: targetUrl,
-        enabled: true,
-        events: webhookEvents
-      })
-    });
+    const created = await upsertWebhook("/webhooks", "POST", targetUrl, webhookEvents);
 
     const createdId = created?.data?.id || "unknown";
     console.log(`Created Resend webhook: ${createdId} -> ${targetUrl}`);
@@ -108,14 +122,7 @@ async function main() {
     return;
   }
 
-  await resendRequest(`/webhooks/${existingId}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      url: targetUrl,
-      enabled: true,
-      events: webhookEvents
-    })
-  });
+  await upsertWebhook(`/webhooks/${existingId}`, "PATCH", targetUrl, webhookEvents);
 
   console.log(`Updated Resend webhook: ${existingId} -> ${targetUrl}`);
 }

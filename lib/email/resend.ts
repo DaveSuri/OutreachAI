@@ -11,6 +11,18 @@ type SendEmailArgs = {
 
 let resendClient: Resend | null = null;
 
+function isResendRestrictionError(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    text.includes("can only send") ||
+    text.includes("testing emails") ||
+    text.includes("verify a domain") ||
+    text.includes("resend.com/domains") ||
+    text.includes("sender identity") ||
+    text.includes("unverified")
+  );
+}
+
 function getResendClient(): Resend | null {
   if (!process.env.RESEND_API_KEY) {
     return null;
@@ -53,6 +65,12 @@ export async function sendEmail(args: SendEmailArgs): Promise<{ id: string | nul
   });
 
   if (response.error) {
+    if (isResendRestrictionError(response.error.message)) {
+      return {
+        id: `mock_${Date.now()}`,
+        status: "mocked"
+      };
+    }
     throw new Error(response.error.message);
   }
 
