@@ -455,6 +455,28 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.campaign-card:hover {
+  border-color: #bfc8e8;
+  box-shadow: 0 14px 26px rgba(20, 29, 52, 0.09);
+  transform: translateY(-1px);
+}
+
+.campaign-card:focus {
+  outline: none;
+}
+
+.campaign-card:focus-visible {
+  border-color: #5860ea;
+  box-shadow: 0 0 0 3px rgba(88, 96, 234, 0.24);
+}
+
+.campaign-card.selected {
+  border-color: #5860ea;
+  box-shadow: 0 0 0 2px rgba(88, 96, 234, 0.14);
 }
 
 .campaign-card-left {

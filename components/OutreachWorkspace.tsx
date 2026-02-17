@@ -241,11 +241,14 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
 
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [leadTab, setLeadTab] = useState<LeadTabId>("leadManager");
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1);
   const [wizardMode, setWizardMode] = useState<WizardMode>("COGNITIVE");
   const [campaignName, setCampaignName] = useState("Q3 Enterprise Outreach");
   const [launching, setLaunching] = useState(false);
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  const [sendingLeadId, setSendingLeadId] = useState<string | null>(null);
 
   const [importCampaignId, setImportCampaignId] = useState(data.campaigns[0]?.id ?? "");
   const [importCsv, setImportCsv] = useState(sampleCSV);
@@ -280,6 +283,29 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
 
     return byCampaign;
   }, [data.leads]);
+
+  const selectedCampaign = useMemo(
+    () => data.campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null,
+    [data.campaigns, selectedCampaignId]
+  );
+
+  const visibleLeads = useMemo(() => {
+    const base = selectedCampaignId ? data.leads.filter((lead) => lead.campaignId === selectedCampaignId) : data.leads;
+    const query = leadSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return base;
+    }
+
+    return base.filter((lead) => {
+      const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(" ").toLowerCase();
+      return (
+        lead.email.toLowerCase().includes(query) ||
+        fullName.includes(query) ||
+        (lead.company || "").toLowerCase().includes(query) ||
+        lead.status.toLowerCase().includes(query)
+      );
+    });
+  }, [data.leads, leadSearchQuery, selectedCampaignId]);
 
   const weeklyBars = [
     { day: "Mon", sent: 410, replies: 28 },
@@ -363,6 +389,7 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
       setWizardStep(1);
       setCampaignName("Q3 Enterprise Outreach");
       setActiveView("campaigns");
+      setSelectedCampaignId(null);
       router.refresh();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Campaign creation failed");
@@ -388,6 +415,7 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
   }
 
   async function sendDirectEmail(leadId: string, useAI: boolean = true) {
+    setSendingLeadId(leadId);
     try {
       const response = await fetch("/api/emails/send", {
         method: "POST",
@@ -400,39 +428,24 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
         })
       });
       const result = await response.json();
-      
+
       if (!response.ok) {
-        // If real send fails, try demo mode as fallback
-        if (result.error && result.error.includes("can only send to")) {
-          const demoResponse = await fetch("/api/emails/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              leadId,
-              useAI,
-              demoMode: true,
-              template: useAI ? undefined : "Hi {{firstName}}, reaching out about {{company}}.",
-              subject: useAI ? undefined : "Quick idea for {{company}}"
-            })
-          });
-          const demoResult = await demoResponse.json();
-          if (demoResult.success) {
-            window.alert(`(Demo Mode) Email simulated successfully!\n\nTo send real emails, verify your domain at resend.com/domains`);
-            router.refresh();
-            return;
-          }
-        }
         throw new Error(result.error || "Send failed");
       }
-      
+
       if (result.demoMode) {
-        window.alert(`(Demo Mode) Email simulated!\n\nTo send real emails, verify your domain at resend.com/domains`);
+        window.alert(
+          result.notice ||
+            "(Demo Mode) Email simulated successfully. To send real emails, verify your domain at resend.com/domains."
+        );
       } else {
-        window.alert(`Email sent successfully to lead!`);
+        window.alert("Email sent successfully.");
       }
       router.refresh();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Send failed");
+    } finally {
+      setSendingLeadId(null);
     }
   }
 
@@ -662,7 +675,26 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                     campaign.type === "LINEAR" && campaign.stepCount > 3 && index % 2 === 1 ? "COGNITIVE" : campaign.type;
 
                   return (
-                    <article className="campaign-card" key={campaign.id}>
+                    <article
+                      className={`campaign-card ${selectedCampaignId === campaign.id ? "selected" : ""}`}
+                      key={campaign.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open ${campaign.name} leads`}
+                      onClick={() => {
+                        setSelectedCampaignId(campaign.id);
+                        setLeadTab("leadManager");
+                        setActiveView("leadManagement");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedCampaignId(campaign.id);
+                          setLeadTab("leadManager");
+                          setActiveView("leadManagement");
+                        }
+                      }}
+                    >
                       <div className="campaign-card-left">
                         <div className={`campaign-icon ${campaign.status === "ACTIVE" ? "green" : "amber"}`}>
                           {campaign.stepCount > 3 ? "✧" : "✉"}
@@ -695,7 +727,11 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                       {campaign.status === "DRAFT" && campaign.leadsCount > 0 && (
                         <button
                           className="primary-btn"
-                          onClick={() => activateCampaign(campaign.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            activateCampaign(campaign.id);
+                          }}
+                          type="button"
                           style={{ marginLeft: 12 }}
                         >
                           Activate
@@ -765,10 +801,16 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                   <div className="lead-table-wrap">
                     <div className="lead-table-header">
                       <div>
-                        <h3>All Leads</h3>
-                        <p>Active Sequence: Mixed</p>
+                        <h3>{selectedCampaign ? `${selectedCampaign.name} Leads` : "All Leads"}</h3>
+                        <p>
+                          Active Sequence: {selectedCampaign ? selectedCampaign.type : "Mixed"} {selectedCampaign ? `| ${visibleLeads.length} lead(s)` : ""}
+                        </p>
                       </div>
-                      <input placeholder="Search leads..." />
+                      <input
+                        placeholder="Search leads..."
+                        value={leadSearchQuery}
+                        onChange={(event) => setLeadSearchQuery(event.target.value)}
+                      />
                     </div>
 
                     <table className="lead-table">
@@ -783,7 +825,7 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.leads.slice(0, 8).map((lead) => {
+                        {visibleLeads.slice(0, 20).map((lead) => {
                           const stepNumber = Math.min(lead.emailLogCount + 1, Math.max(lead.campaign.stepCount, 1));
                           const stepText = lead.status === "REPLIED" || lead.status === "CONTACTED" ? "-" : `Step ${stepNumber} of ${lead.campaign.stepCount}`;
                           const scoreWidth = Math.max(6, Math.min(lead.engagementScore, 100));
@@ -815,19 +857,28 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                               <td>
                                 <span className={statusClass(lead.status)}>{lead.status}</span>
                               </td>
-                              <td>
+                              <td className="actions-cell">
                                 <button
                                   className="primary-btn"
                                   onClick={() => sendDirectEmail(lead.id, true)}
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
+                                  disabled={sendingLeadId === lead.id}
+                                  type="button"
+                                  style={{ padding: "4px 8px", fontSize: "12px" }}
                                 >
-                                  Send
+                                  {sendingLeadId === lead.id ? "Sending..." : "Send"}
                                 </button>
+                                <span style={{ marginLeft: 8 }}>Ⅱ ↩</span>
                               </td>
-                              <td className="actions-cell">Ⅱ ↩</td>
                             </tr>
                           );
                         })}
+                        {visibleLeads.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="lead-sub">
+                              No leads match this campaign/filter yet.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
