@@ -24,6 +24,7 @@ Using Clerk for sign-up/login and session management.
 - Critical race-condition guards via optimistic concurrency (`version`) and `repliedAt` checks.
 - Resend inbound webhook verification via Svix signatures.
 - Human-in-the-loop draft approval queue.
+- Demo-mode compressed wait windows (default: 1 minute) for rapid evaluator testing.
 - Voice-native assistant scaffold with tool calls:
   - `get_dashboard_stats`
   - `query_hot_leads`
@@ -147,8 +148,10 @@ Optional:
 
 - `POST /api/campaigns` create campaign with default sequence
 - `POST /api/campaigns/upload` ingest CSV/JSON leads and trigger `campaign/start`
+- `POST /api/ai/generate` queue async AI draft generation for a lead
 - `POST /api/webhooks/resend` verify inbound email and emit `lead/reply.received`
 - `POST /api/drafts/[id]/approve` emit `draft/approved`
+- `POST /api/test/simulate-reply` test helper to mark lead replied and emit `lead/reply.received`
 - `GET /api/stats` dashboard stats
 - `GET /api/hot-leads` high priority leads
 - `POST /api/voice/tools` voice assistant tool router

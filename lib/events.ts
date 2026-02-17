@@ -1,7 +1,8 @@
 export const events = {
   campaignStart: "campaign/start",
   leadReplyReceived: "lead/reply.received",
-  draftApproved: "draft/approved"
+  draftApproved: "draft/approved",
+  aiDraftGenerate: "ai/draft.generate"
 } as const;
 
 export type CampaignStartEventData = {
@@ -21,4 +22,11 @@ export type LeadReplyReceivedEventData = {
 export type DraftApprovedEventData = {
   draftId: string;
   approvedBy: string;
+};
+
+export type AiDraftGenerateEventData = {
+  leadId: string;
+  campaignId: string;
+  template?: string;
+  requestedBy?: string;
 };

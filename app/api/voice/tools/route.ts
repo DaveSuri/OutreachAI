@@ -34,11 +34,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Query is required" }, { status: 400 });
   }
 
-  const toolName = (await chooseVoiceToolWithGemini(query)) ?? chooseToolHeuristic(query);
+  let toolName = chooseToolHeuristic(query);
+  try {
+    const modelChoice = await chooseVoiceToolWithGemini(query);
+    if (modelChoice) {
+      toolName = modelChoice;
+    }
+  } catch {
+    // Fall back to deterministic routing when Gemini tool-calling is unavailable.
+  }
+
   const payload =
     toolName === "get_dashboard_stats" ? await getDashboardStats() : await queryHotLeads();
 
-  const message = await generateVoiceAssistantResponse(query, { toolName, payload });
+  let message = "";
+  try {
+    message = await generateVoiceAssistantResponse(query, { toolName, payload });
+  } catch {
+    message = `Tool ${toolName} executed successfully. Here is the latest data: ${JSON.stringify(payload)}`;
+  }
 
   return NextResponse.json({
     toolName,

@@ -29,6 +29,7 @@ Trigger: `campaign/start`
 - `EMAIL`: generates via OpenAI `generateColdEmail`, sends via Resend, logs `EmailLog`
 - Uses optimistic concurrency on lead update (`version` in `updateMany` where clause)
 - `WAIT`: uses `step.sleep()` and then post-sleep lead guard
+- Demo behavior: when `DEMO_MODE=true` (default), wait durations are compressed to `DEMO_WAIT_MINUTES` (default `1`)
 - Final state: marks lead `COMPLETED` if uninterrupted
 
 ## 3. Inbound Reply Workflow
@@ -54,6 +55,8 @@ Trigger path: Resend webhook -> `POST /api/webhooks/resend`
 2. Actions:
 - Approve: `POST /api/drafts/[id]/approve` -> emits `draft/approved`
 - Reject: `POST /api/drafts/[id]/reject` -> marks draft `REJECTED`
+- Generate (async): `POST /api/ai/generate` -> emits `ai/draft.generate`
+- Simulate reply (testing): `POST /api/test/simulate-reply` -> marks lead replied + emits `lead/reply.received`
 
 3. Approved-send workflow (`send-approved-draft`):
 - Loads draft + lead
@@ -90,13 +93,16 @@ Key concurrency fields on `Lead`:
 - `campaign/start`
 - `lead/reply.received`
 - `draft/approved`
+- `ai/draft.generate`
 
 ## 8. API Surface
 - `POST /api/campaigns`
 - `POST /api/campaigns/upload`
 - `POST /api/campaigns/[id]/activate`
 - `POST /api/emails/send`
+- `POST /api/ai/generate`
 - `POST /api/webhooks/resend`
+- `POST /api/test/simulate-reply`
 - `POST /api/drafts/[id]/approve`
 - `POST /api/drafts/[id]/reject`
 - `GET /api/stats`

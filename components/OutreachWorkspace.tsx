@@ -249,6 +249,8 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
   const [launching, setLaunching] = useState(false);
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [sendingLeadId, setSendingLeadId] = useState<string | null>(null);
+  const [draftingLeadId, setDraftingLeadId] = useState<string | null>(null);
+  const [simulatingLeadId, setSimulatingLeadId] = useState<string | null>(null);
 
   const [importCampaignId, setImportCampaignId] = useState(data.campaigns[0]?.id ?? "");
   const [importCsv, setImportCsv] = useState(sampleCSV);
@@ -451,6 +453,64 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
     }
   }
 
+  async function queueAiDraftForLead(leadId: string) {
+    setDraftingLeadId(leadId);
+    try {
+      const response = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ leadId })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to queue AI draft");
+      }
+
+      window.alert("AI draft queued. Review it in the Approvals tab in a few seconds.");
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unable to queue AI draft");
+    } finally {
+      setDraftingLeadId(null);
+    }
+  }
+
+  async function simulateLeadReply(leadId: string) {
+    setSimulatingLeadId(leadId);
+    try {
+      const response = await fetch("/api/test/simulate-reply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          leadId,
+          subject: "Simulated reply",
+          textBody: "Thanks for the outreach. This is a simulated test reply."
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to simulate reply");
+      }
+
+      if (result.updated) {
+        window.alert("Reply simulated. Lead marked as REPLIED and workflow stop event emitted.");
+      } else {
+        window.alert("Lead was already replied. No additional state change was needed.");
+      }
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unable to simulate reply");
+    } finally {
+      setSimulatingLeadId(null);
+    }
+  }
+
   async function uploadLeads() {
     if (!importCampaignId) {
       setImportMessage("Choose a campaign first.");
@@ -633,6 +693,10 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
             <span className="avatar">A</span>
           </div>
         </header>
+
+        <div className="demo-banner">
+          Demo Mode active: WAIT steps are compressed to 1 minute by default. Set <code>DEMO_MODE=false</code> to use full delays.
+        </div>
 
         <div className="content-shell">
           {activeView === "dashboard" && (
@@ -897,16 +961,32 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                                 <span className={statusClass(lead.status)}>{lead.status}</span>
                               </td>
                               <td className="actions-cell">
-                                <button
-                                  className="primary-btn"
-                                  onClick={() => sendDirectEmail(lead.id, true)}
-                                  disabled={sendingLeadId === lead.id}
-                                  type="button"
-                                  style={{ padding: "4px 8px", fontSize: "12px" }}
-                                >
-                                  {sendingLeadId === lead.id ? "Sending..." : "Send"}
-                                </button>
-                                <span style={{ marginLeft: 8 }}>Ⅱ ↩</span>
+                                <div className="actions-stack">
+                                  <button
+                                    className="primary-btn table-action-btn"
+                                    onClick={() => sendDirectEmail(lead.id, true)}
+                                    disabled={sendingLeadId === lead.id}
+                                    type="button"
+                                  >
+                                    {sendingLeadId === lead.id ? "Sending..." : "Send"}
+                                  </button>
+                                  <button
+                                    className="ghost-btn small table-action-btn"
+                                    type="button"
+                                    onClick={() => queueAiDraftForLead(lead.id)}
+                                    disabled={draftingLeadId === lead.id}
+                                  >
+                                    {draftingLeadId === lead.id ? "Queueing..." : "AI Draft"}
+                                  </button>
+                                  <button
+                                    className="ghost-btn small table-action-btn"
+                                    type="button"
+                                    onClick={() => simulateLeadReply(lead.id)}
+                                    disabled={simulatingLeadId === lead.id || lead.status === "REPLIED" || lead.status === "CONTACTED"}
+                                  >
+                                    {simulatingLeadId === lead.id ? "Simulating..." : "Simulate Reply"}
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1069,8 +1149,10 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                     <ul>
                       <li>/api/campaigns</li>
                       <li>/api/campaigns/upload</li>
+                      <li>/api/ai/generate</li>
                       <li>/api/webhooks/resend</li>
                       <li>/api/drafts/[id]/approve</li>
+                      <li>/api/test/simulate-reply</li>
                     </ul>
                   </div>
                 </div>

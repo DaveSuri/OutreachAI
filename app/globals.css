@@ -213,6 +213,20 @@ textarea {
   color: #15a046;
 }
 
+.demo-banner {
+  margin: 10px 22px 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid #d8e1fb;
+  background: #f4f7ff;
+  color: #47557b;
+  font-size: 13px;
+}
+
+.demo-banner code {
+  font-family: var(--font-mono), monospace;
+}
+
 .avatar {
   width: 34px;
   height: 34px;
@@ -759,6 +773,17 @@ textarea {
 .actions-cell {
   color: #6d7590;
   font-family: var(--font-mono), monospace;
+}
+
+.actions-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 108px;
+}
+
+.table-action-btn {
+  padding: 5px 8px;
+  font-size: 12px;
 }
 
 .approvals-layout {

@@ -10,6 +10,20 @@ function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+function resolveWaitMinutes(stepDelayMinutes: number): number {
+  const demoMode = (process.env.DEMO_MODE ?? "true").toLowerCase() !== "false";
+  if (!demoMode) {
+    return stepDelayMinutes;
+  }
+
+  const parsedDemoDelay = Number.parseInt(process.env.DEMO_WAIT_MINUTES ?? "1", 10);
+  if (Number.isFinite(parsedDemoDelay) && parsedDemoDelay > 0) {
+    return parsedDemoDelay;
+  }
+
+  return 1;
+}
+
 export const campaignWorkflow = inngest.createFunction(
   {
     id: "campaign-workflow",
@@ -185,7 +199,8 @@ export const campaignWorkflow = inngest.createFunction(
       }
 
       if (sequenceStep.type === SequenceStepType.WAIT && sequenceStep.delayMinutes && sequenceStep.delayMinutes > 0) {
-        await step.sleep(`sleep-${sequenceStep.order}`, `${sequenceStep.delayMinutes}m`);
+        const effectiveWaitMinutes = resolveWaitMinutes(sequenceStep.delayMinutes);
+        await step.sleep(`sleep-${sequenceStep.order}`, `${effectiveWaitMinutes}m`);
 
         const postSleepLead = await step.run(`post-sleep-guard-${sequenceStep.order}`, async () => {
           return prisma.lead.findUnique({
