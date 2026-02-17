@@ -35,7 +35,7 @@ function parseEnvFile(filepath) {
 
 export function loadDotEnvFiles(mode = process.env.NODE_ENV || "development") {
   const cwd = process.cwd();
-  const layeredFiles = [".env", `.env.${mode}`, ".env.local", `.env.${mode}.local`];
+  const layeredFiles = [".env", ".env.local", `.env.${mode}`, `.env.${mode}.local`];
   const combined = {};
   const shellDefined = new Set(Object.keys(process.env));
 

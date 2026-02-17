@@ -55,10 +55,7 @@ async function resendRequest(path, init = {}) {
   return parsedBody;
 }
 
-const webhookBodyVariants = (target, events) => [
-  { endpoint: target, enabled: true, events },
-  { url: target, enabled: true, events }
-];
+const webhookBodyVariants = (target, events) => [{ endpoint: target, events }, { url: target, events }];
 
 async function upsertWebhook(path, method, target, events) {
   let lastError = null;
@@ -97,7 +94,10 @@ function sameEventSet(a, b) {
 async function main() {
   const listed = await resendRequest("/webhooks");
   const webhooks = asArray(listed.data);
-  const existing = webhooks.find((item) => typeof item?.url === "string" && item.url.replace(/\/+$/, "") === targetUrl);
+  const existing = webhooks.find((item) => {
+    const endpoint = typeof item?.endpoint === "string" ? item.endpoint : typeof item?.url === "string" ? item.url : "";
+    return endpoint.replace(/\/+$/, "") === targetUrl;
+  });
 
   if (!existing) {
     const created = await upsertWebhook("/webhooks", "POST", targetUrl, webhookEvents);
@@ -110,14 +110,13 @@ async function main() {
   const existingId = existing.id;
   const existingEvents = asArray(existing.events).map((eventName) => String(eventName));
   const needsEventUpdate = !sameEventSet(existingEvents, webhookEvents);
-  const needsEnableUpdate = existing.enabled === false;
 
   if (!existingId) {
     console.log(`Existing webhook found at ${targetUrl}, but it has no ID in list response. No changes applied.`);
     return;
   }
 
-  if (!needsEventUpdate && !needsEnableUpdate) {
+  if (!needsEventUpdate) {
     console.log(`Resend webhook already configured: ${existingId} -> ${targetUrl}`);
     return;
   }

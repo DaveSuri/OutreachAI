@@ -5,6 +5,7 @@ import { loadDotEnvFiles } from "./_env-loader.mjs";
 loadDotEnvFiles("production");
 
 const appUrl = (process.env.APP_URL || "").trim();
+const bypassSecret = (process.env.VERCEL_AUTOMATION_BYPASS_SECRET || "").trim();
 
 if (!appUrl) {
   console.error("APP_URL is required.");
@@ -16,7 +17,8 @@ const endpoint = `${appUrl.replace(/\/+$/, "")}/api/inngest`;
 async function main() {
   const response = await fetch(endpoint, {
     headers: {
-      "user-agent": "inngest-js:v3.52.0"
+      "user-agent": "inngest-js:v3.52.0",
+      ...(bypassSecret ? { "x-vercel-protection-bypass": bypassSecret } : {})
     }
   });
 
