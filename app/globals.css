@@ -940,6 +940,32 @@ textarea {
   padding: 11px 12px;
 }
 
+.import-form input {
+  width: 100%;
+  padding: 11px 12px;
+}
+
+.manual-lead-form {
+  border: 1px solid #e4e9f5;
+  border-radius: 12px;
+  background: #fbfcff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.manual-lead-form h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #526087;
+}
+
+.manual-lead-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dropzone {
   border: 1px dashed #bfc8e8;
   border-radius: 12px;
@@ -1365,6 +1391,10 @@ textarea {
   .import-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .manual-lead-grid {
+    grid-template-columns: 1fr;
   }
 
   .campaign-stats {

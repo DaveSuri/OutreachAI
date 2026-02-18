@@ -25,6 +25,8 @@ Using Clerk for sign-up/login and session management.
 - Resend inbound webhook verification via Svix signatures.
 - Human-in-the-loop draft approval queue.
 - Demo-mode compressed wait windows (default: 1 minute) for rapid evaluator testing.
+- Lead ingestion supports drag/drop CSV and manual single-lead entry from dashboard.
+- CSV parser accepts common header variants (e.g. `first_name`, `First Name`, `organization`).
 - Voice-native assistant scaffold with tool calls:
   - `get_dashboard_stats`
   - `query_hot_leads`
@@ -156,6 +158,10 @@ Optional:
 - `GET /api/hot-leads` high priority leads
 - `POST /api/voice/tools` voice assistant tool router
 - `GET|POST /api/inngest` Inngest serve endpoint
+
+Upload hardening:
+- `MAX_UPLOAD_LEADS` env var (default `5000`) caps per-request ingestion size.
+- Campaign start events are sent in batches for large imports.
 
 ## Inngest Workflows
 

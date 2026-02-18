@@ -4,6 +4,25 @@ import { parseUploadPayload } from "@/lib/schemas/upload";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_MAX_UPLOAD_LEADS = 5000;
+const EVENT_BATCH_SIZE = 250;
+
+function resolveMaxUploadLeads(): number {
+  const parsed = Number.parseInt(process.env.MAX_UPLOAD_LEADS ?? `${DEFAULT_MAX_UPLOAD_LEADS}`, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return DEFAULT_MAX_UPLOAD_LEADS;
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -11,6 +30,14 @@ export async function POST(request: Request) {
 
     if (leads.length === 0) {
       return NextResponse.json({ error: "No valid leads in payload" }, { status: 400 });
+    }
+
+    const maxUploadLeads = resolveMaxUploadLeads();
+    if (leads.length > maxUploadLeads) {
+      return NextResponse.json(
+        { error: `Upload too large. Max ${maxUploadLeads} leads per request.` },
+        { status: 413 }
+      );
     }
 
     // Dynamic imports to avoid build-time database connection
@@ -86,15 +113,17 @@ export async function POST(request: Request) {
     });
 
     if (createdLeadIds.length > 0) {
-      await inngest.send(
-        createdLeadIds.map((leadId) => ({
-          name: events.campaignStart,
-          data: {
-            campaignId,
-            leadId
-          }
-        }))
-      );
+      for (const batch of chunkArray(createdLeadIds, EVENT_BATCH_SIZE)) {
+        await inngest.send(
+          batch.map((leadId) => ({
+            name: events.campaignStart,
+            data: {
+              campaignId,
+              leadId
+            }
+          }))
+        );
+      }
     }
 
     return NextResponse.json({

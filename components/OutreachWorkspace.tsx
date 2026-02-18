@@ -257,7 +257,14 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
   const [importFilename, setImportFilename] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [addingLead, setAddingLead] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [manualLead, setManualLead] = useState({
+    email: "",
+    firstName: "",
+    lastName: "",
+    company: ""
+  });
 
   const [drafts, setDrafts] = useState<DraftSummary[]>(data.pendingDrafts);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(data.pendingDrafts[0]?.id ?? null);
@@ -543,6 +550,59 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
       setImportMessage(error instanceof Error ? error.message : "Lead import failed");
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function addLeadFromForm() {
+    if (!importCampaignId) {
+      setImportMessage("Choose a campaign first.");
+      return;
+    }
+
+    if (!manualLead.email.trim()) {
+      setImportMessage("Email is required to add a lead.");
+      return;
+    }
+
+    setAddingLead(true);
+    setImportMessage(null);
+
+    try {
+      const response = await fetch("/api/campaigns/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          campaignId: importCampaignId,
+          leads: [
+            {
+              email: manualLead.email.trim(),
+              firstName: manualLead.firstName.trim() || undefined,
+              lastName: manualLead.lastName.trim() || undefined,
+              company: manualLead.company.trim() || undefined
+            }
+          ]
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Lead add failed");
+      }
+
+      setImportMessage(`Lead saved. Created ${result.created}. Updated ${result.updated}.`);
+      setManualLead({
+        email: "",
+        firstName: "",
+        lastName: "",
+        company: ""
+      });
+      router.refresh();
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "Lead add failed");
+    } finally {
+      setAddingLead(false);
     }
   }
 
@@ -1087,6 +1147,35 @@ export function OutreachWorkspace({ data }: { data: WorkspaceData }) {
                       </option>
                     ))}
                   </select>
+                  <div className="manual-lead-form">
+                    <h4>Add Lead Manually</h4>
+                    <div className="manual-lead-grid">
+                      <input
+                        type="email"
+                        placeholder="Email *"
+                        value={manualLead.email}
+                        onChange={(event) => setManualLead((current) => ({ ...current, email: event.target.value }))}
+                      />
+                      <input
+                        placeholder="First name"
+                        value={manualLead.firstName}
+                        onChange={(event) => setManualLead((current) => ({ ...current, firstName: event.target.value }))}
+                      />
+                      <input
+                        placeholder="Last name"
+                        value={manualLead.lastName}
+                        onChange={(event) => setManualLead((current) => ({ ...current, lastName: event.target.value }))}
+                      />
+                      <input
+                        placeholder="Company"
+                        value={manualLead.company}
+                        onChange={(event) => setManualLead((current) => ({ ...current, company: event.target.value }))}
+                      />
+                    </div>
+                    <button className="ghost-btn" type="button" onClick={addLeadFromForm} disabled={addingLead}>
+                      {addingLead ? "Saving..." : "Add Lead"}
+                    </button>
+                  </div>
                   <label
                     className={`dropzone ${dragActive ? "drag-active" : ""}`}
                     onDragOver={(event) => {

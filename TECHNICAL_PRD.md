@@ -20,6 +20,8 @@ Trigger: `campaign/start`
 1. Lead ingestion:
 - API: `POST /api/campaigns/upload`
 - Upserts leads by `(email, campaignId)`
+- Accepts CSV header aliases (`first_name`, `First Name`, `organization`, etc.)
+- Enforces max per-request ingestion via `MAX_UPLOAD_LEADS` (default `5000`)
 - New leads emit `campaign/start`
 
 2. Campaign workflow (`campaign-workflow`):
