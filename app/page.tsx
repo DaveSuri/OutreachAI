@@ -115,10 +115,10 @@ export default async function DashboardPage() {
                   </div>
                 </div>
 
-                <Button variant="ghost" size="sm" className="text-indigo-600">
+                <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-indigo-600 transition hover:bg-slate-100">
                   Open
                   <ArrowRight className="h-4 w-4" />
-                </Button>
+                </span>
               </Link>
             ))}
           </CardContent>

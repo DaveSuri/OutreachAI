@@ -130,16 +130,16 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
             </div>
 
             <form action={generateDraftsAction}>
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={pendingCount === 0}>
                 <Sparkles className="h-4 w-4" />
-                Generate Drafts
+                {pendingCount === 0 ? "No Pending Leads" : "Generate Drafts"}
               </Button>
             </form>
 
             <form action={startCampaignAction}>
-              <Button type="submit" className="w-full" variant="secondary">
+              <Button type="submit" className="w-full" variant="secondary" disabled={draftedCount === 0}>
                 <Play className="h-4 w-4" />
-                Start Campaign
+                {draftedCount === 0 ? "No Drafts to Start" : "Start Campaign"}
               </Button>
             </form>
           </CardContent>
@@ -195,8 +195,8 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
                     <TableCell className="text-xs text-slate-500">{lead.emailLogs[0]?.sentAt?.toLocaleString() || "-"}</TableCell>
                     <TableCell className="text-right">
                       <form action={simulateReply.bind(null, lead.id)} className="inline-block">
-                        <Button type="submit" variant="outline" size="sm">
-                          Simulate Reply
+                        <Button type="submit" variant="outline" size="sm" disabled={lead.status === "REPLIED"}>
+                          {lead.status === "REPLIED" ? "Already Replied" : "Simulate Reply"}
                         </Button>
                       </form>
                     </TableCell>
