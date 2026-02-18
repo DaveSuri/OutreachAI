@@ -117,6 +117,14 @@ One-command live deployment:
 npm run deploy:live
 ```
 
+Before running deploy scripts:
+
+```bash
+cp .env.production.example .env.production.local
+```
+
+Fill `.env.production.local` with real values (do not commit this file).
+
 The script performs:
 
 - Production env validation (`scripts/check-env.mjs`)
