@@ -1,9 +1,23 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey });
+  }
+
+  return openaiClient;
+}
 
 export async function generatePersonalizedDraft(input: { name?: string | null; company?: string | null }) {
-  if (!process.env.OPENAI_API_KEY) {
+  const openai = getOpenAIClient();
+  if (!openai) {
     const fallbackName = input.name || "there";
     const fallbackCompany = input.company || "your team";
     return `Hi ${fallbackName},\n\nI noticed ${fallbackCompany} is growing fast. I have one idea that can improve response rates without increasing send volume.\n\nOpen to a quick 10-minute chat this week?\n\nBest,\nOutreach AI`;
