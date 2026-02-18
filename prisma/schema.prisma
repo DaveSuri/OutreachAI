@@ -26,6 +26,11 @@ enum SequenceStepType {
 
 enum LeadStatus {
   PENDING
+  DRAFTED
+  SCHEDULED
+  SENT
+  BOUNCED
+  STOPPED
   IN_SEQUENCE
   REPLIED
   CONTACTED
@@ -47,6 +52,7 @@ enum DraftStatus {
 model Campaign {
   id        String         @id @default(cuid())
   name      String
+  userId    String         @default("demo-user")
   status    CampaignStatus @default(DRAFT)
   type      CampaignType   @default(LINEAR)
   createdAt DateTime       @default(now())
@@ -72,11 +78,13 @@ model SequenceStep {
 model Lead {
   id              String     @id @default(cuid())
   email           String
+  name            String?
   firstName       String?
   lastName        String?
   company         String?
   campaignId      String
   status          LeadStatus @default(PENDING)
+  aiDraft         String?    @db.Text
   engagementScore Int        @default(0)
   aiContext       Json?
   version         Int        @default(0)

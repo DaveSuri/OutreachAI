@@ -5,13 +5,13 @@ import {
   SignUpButton,
   SignedIn,
   SignedOut,
-  UserButton,
+  UserButton
 } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OutreachAI",
-  description: "Event-driven AI CRM for cold outreach"
+  title: "Outreach AI",
+  description: "Production-ready Mini-SaaS for event-driven email outreach"
 };
 
 export default function RootLayout({
@@ -25,8 +25,8 @@ export default function RootLayout({
         <body>
           <header className="clerk-header">
             <SignedOut>
-              <SignInButton />
-              <SignUpButton />
+              <SignInButton mode="modal" />
+              <SignUpButton mode="modal" />
             </SignedOut>
             <SignedIn>
               <UserButton />
