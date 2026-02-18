@@ -2,6 +2,7 @@ import { EmailDeliveryStatus, LeadStatus } from "@prisma/client";
 import { NonRetriableError } from "inngest";
 import { prisma } from "@/src/lib/db";
 import { inngest } from "@/src/lib/inngest";
+import { generateThinkingInsight } from "@/src/lib/openai";
 import { sendResendEmail } from "@/src/lib/resend";
 
 type CampaignStartEvent = {
@@ -10,6 +11,8 @@ type CampaignStartEvent = {
     campaignId: string;
     leadId: string;
     waitDuration?: string;
+    enableThinking?: boolean;
+    thinkingPrompt?: string;
   };
 };
 
@@ -19,6 +22,8 @@ export const processCampaign = inngest.createFunction(
   async ({ event, step }) => {
     const { campaignId, leadId } = event.data as CampaignStartEvent["data"];
     const waitDuration = event.data.waitDuration || "2 days";
+    const enableThinking = Boolean(event.data.enableThinking);
+    const thinkingPrompt = event.data.thinkingPrompt || "";
 
     const lead = await step.run("load-lead", async () => {
       return prisma.lead.findUnique({
@@ -119,17 +124,54 @@ export const processCampaign = inngest.createFunction(
       throw new NonRetriableError("Campaign Stopped");
     }
 
+    const thinkingNote = enableThinking
+      ? await step.run("ai-thinking-between-emails", async () => {
+          const latest = await prisma.lead.findUnique({
+            where: { id: leadId },
+            select: {
+              name: true,
+              company: true,
+              aiDraft: true
+            }
+          });
+
+          return generateThinkingInsight({
+            name: latest?.name ?? lead.name,
+            company: latest?.company ?? lead.company,
+            priorDraft: latest?.aiDraft ?? lead.aiDraft,
+            prompt: thinkingPrompt
+          });
+        })
+      : null;
+
     await step.run("send-email-2", async () => {
-      const followupBody = [
-        `Hi ${lead.name || "there"},`,
-        "",
+      const followupGuard = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          status: true,
+          repliedAt: true
+        }
+      });
+
+      if (!followupGuard || followupGuard.status === LeadStatus.REPLIED || followupGuard.repliedAt) {
+        throw new NonRetriableError("Campaign Stopped");
+      }
+
+      const followupLines = [`Hi ${lead.name || "there"},`, ""];
+      if (thinkingNote) {
+        followupLines.push(thinkingNote, "");
+      }
+
+      followupLines.push(
         "Following up in case my first note got buried. I can share a simple outreach playbook that usually lifts reply rates in one week.",
         "",
         "Worth a quick 10-minute call?",
         "",
         "Best,",
         "Outreach AI"
-      ].join("\n");
+      );
+
+      const followupBody = followupLines.join("\n");
 
       const sent = await sendResendEmail({
         to: lead.email,

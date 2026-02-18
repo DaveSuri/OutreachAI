@@ -1,11 +1,13 @@
 "use server";
 
-import { LeadStatus } from "@prisma/client";
+import { EmailDeliveryStatus, LeadStatus } from "@prisma/client";
 import Papa from "papaparse";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/src/lib/db";
 import { inngest } from "@/src/lib/inngest";
 import { generatePersonalizedDraft } from "@/src/lib/openai";
+import { sendResendEmail } from "@/src/lib/resend";
 
 type ParsedLead = {
   email: string;
@@ -78,6 +80,18 @@ async function withConcurrency<T>(items: T[], limit: number, task: (item: T) => 
   await Promise.all(workers);
 }
 
+function campaignPath(campaignId: string, notice?: string, tone: "success" | "warning" | "error" = "success") {
+  if (!notice) {
+    return `/campaigns/${campaignId}`;
+  }
+
+  const query = new URLSearchParams({
+    notice,
+    tone
+  });
+  return `/campaigns/${campaignId}?${query.toString()}`;
+}
+
 export async function createCampaign(formData: FormData) {
   const name = normalize(formData.get("name"));
   const userId = normalize(formData.get("userId")) || "demo-user";
@@ -86,14 +100,18 @@ export async function createCampaign(formData: FormData) {
     throw new Error("Campaign name is required");
   }
 
-  await prisma.campaign.create({
+  const campaign = await prisma.campaign.create({
     data: {
       name,
       userId
+    },
+    select: {
+      id: true
     }
   });
 
   revalidatePath("/");
+  redirect(campaignPath(campaign.id, "Campaign created", "success"));
 }
 
 export async function uploadLeads(formData: FormData) {
@@ -112,7 +130,7 @@ export async function uploadLeads(formData: FormData) {
   const leads = parseCsvLeads(csvText);
 
   if (leads.length === 0) {
-    throw new Error("No valid leads found in CSV");
+    redirect(campaignPath(campaignId, "No valid leads found in CSV", "warning"));
   }
 
   await prisma.lead.createMany({
@@ -128,6 +146,7 @@ export async function uploadLeads(formData: FormData) {
 
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/");
+  redirect(campaignPath(campaignId, `Imported ${leads.length} leads`, "success"));
 }
 
 export async function addLead(formData: FormData) {
@@ -162,17 +181,22 @@ export async function addLead(formData: FormData) {
 
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/");
+  redirect(campaignPath(campaignId, `Lead ${email} saved`, "success"));
 }
 
-export async function generateDrafts(campaignId: string) {
-  if (!campaignId.trim()) {
+export async function generateDrafts(formData: FormData) {
+  const campaignId = normalize(formData.get("campaignId"));
+
+  if (!campaignId) {
     throw new Error("Campaign ID is required");
   }
 
   const leads = await prisma.lead.findMany({
     where: {
       campaignId,
-      status: LeadStatus.PENDING
+      status: {
+        notIn: [LeadStatus.REPLIED, LeadStatus.BOUNCED]
+      }
     },
     select: {
       id: true,
@@ -180,6 +204,10 @@ export async function generateDrafts(campaignId: string) {
       company: true
     }
   });
+
+  if (leads.length === 0) {
+    redirect(campaignPath(campaignId, "No eligible leads found for draft generation", "warning"));
+  }
 
   await withConcurrency(leads, 5, async (lead) => {
     const draft = await generatePersonalizedDraft({
@@ -197,10 +225,16 @@ export async function generateDrafts(campaignId: string) {
   });
 
   revalidatePath(`/campaigns/${campaignId}`);
+  redirect(campaignPath(campaignId, `Generated drafts for ${leads.length} leads`, "success"));
 }
 
-export async function startCampaign(campaignId: string) {
-  if (!campaignId.trim()) {
+export async function startCampaign(formData: FormData) {
+  const campaignId = normalize(formData.get("campaignId"));
+  const waitDuration = normalize(formData.get("waitDuration")) || "2 days";
+  const enableThinking = formData.get("enableThinking") === "on";
+  const thinkingPrompt = normalize(formData.get("thinkingPrompt"));
+
+  if (!campaignId) {
     throw new Error("Campaign ID is required");
   }
 
@@ -215,7 +249,7 @@ export async function startCampaign(campaignId: string) {
   });
 
   if (leads.length === 0) {
-    return;
+    redirect(campaignPath(campaignId, "Generate drafts first, then start campaign", "warning"));
   }
 
   await prisma.lead.updateMany({
@@ -235,17 +269,96 @@ export async function startCampaign(campaignId: string) {
       data: {
         campaignId,
         leadId: lead.id,
-        waitDuration: "2 days"
+        waitDuration,
+        enableThinking,
+        thinkingPrompt: thinkingPrompt || undefined
       }
     }))
   );
 
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/");
+  redirect(
+    campaignPath(
+      campaignId,
+      `Started workflow for ${leads.length} leads${enableThinking ? " with AI thinking" : ""}`,
+      "success"
+    )
+  );
 }
 
-export async function simulateReply(leadId: string) {
-  if (!leadId.trim()) {
+export async function sendLeadEmailNow(formData: FormData) {
+  const leadId = normalize(formData.get("leadId"));
+  if (!leadId) {
+    throw new Error("Lead ID is required");
+  }
+
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      campaignId: true,
+      email: true,
+      name: true,
+      company: true,
+      aiDraft: true,
+      status: true
+    }
+  });
+
+  if (!lead) {
+    throw new Error("Lead not found");
+  }
+
+  const body =
+    lead.aiDraft ||
+    (await generatePersonalizedDraft({
+      name: lead.name,
+      company: lead.company
+    }));
+
+  const subject = `Quick idea for ${lead.company || "your team"}`;
+  const sendResult = await sendResendEmail({
+    to: lead.email,
+    subject,
+    html: body.replace(/\n/g, "<br />")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({
+      where: { id: lead.id },
+      data: {
+        status: lead.status === LeadStatus.REPLIED ? LeadStatus.CONTACTED : LeadStatus.SENT,
+        lastEmailedAt: new Date(),
+        messageId: sendResult.id
+      }
+    });
+
+    await tx.emailLog.create({
+      data: {
+        leadId: lead.id,
+        status: EmailDeliveryStatus.sent,
+        sentAt: new Date(),
+        messageId: sendResult.id,
+        subject,
+        body,
+        stepName: "MANUAL_SEND"
+      }
+    });
+  });
+
+  revalidatePath(`/campaigns/${lead.campaignId}`);
+  const sentNotice =
+    sendResult.status === "mocked"
+      ? sendResult.notice || `Email to ${lead.email} simulated`
+      : `Email sent to ${lead.email}`;
+
+  redirect(campaignPath(lead.campaignId, sentNotice, sendResult.status === "mocked" ? "warning" : "success"));
+}
+
+export async function simulateReply(formData: FormData) {
+  const leadId = normalize(formData.get("leadId"));
+  if (!leadId) {
     throw new Error("Lead ID is required");
   }
 
@@ -258,10 +371,12 @@ export async function simulateReply(leadId: string) {
       repliedAt: new Date()
     },
     select: {
-      campaignId: true
+      campaignId: true,
+      email: true
     }
   });
 
   revalidatePath(`/campaigns/${lead.campaignId}`);
   revalidatePath("/");
+  redirect(campaignPath(lead.campaignId, `Marked ${lead.email} as replied`, "success"));
 }

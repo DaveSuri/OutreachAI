@@ -15,6 +15,17 @@ function getResendClient() {
   return resendClient;
 }
 
+function isResendRestrictionError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("can only send") ||
+    normalized.includes("testing emails") ||
+    normalized.includes("verify a domain") ||
+    normalized.includes("resend.com/domains") ||
+    normalized.includes("sender identity")
+  );
+}
+
 export async function sendResendEmail(args: {
   to: string;
   subject: string;
@@ -23,26 +34,51 @@ export async function sendResendEmail(args: {
 }) {
   const resend = getResendClient();
   if (!resend) {
-    throw new Error("Missing RESEND_API_KEY");
+    return {
+      id: `mock_${Date.now()}`,
+      status: "mocked" as const,
+      notice: "Missing RESEND_API_KEY. Email was simulated."
+    };
   }
 
   if (!process.env.EMAIL_FROM) {
     throw new Error("Missing EMAIL_FROM");
   }
 
-  const { data, error } = await resend.emails.send({
-    from: process.env.EMAIL_FROM,
-    to: args.to,
-    subject: args.subject,
-    html: args.html,
-    replyTo: args.replyTo
-  });
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      replyTo: args.replyTo
+    });
 
-  if (error) {
-    throw new Error(error.message);
+    if (error) {
+      if (isResendRestrictionError(error.message)) {
+        return {
+          id: `mock_${Date.now()}`,
+          status: "mocked" as const,
+          notice: "Resend account is in testing mode. Email was simulated."
+        };
+      }
+      throw new Error(error.message);
+    }
+
+    return {
+      id: data?.id ?? null,
+      status: "sent" as const,
+      notice: null
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isResendRestrictionError(message)) {
+      return {
+        id: `mock_${Date.now()}`,
+        status: "mocked" as const,
+        notice: "Resend account is in testing mode. Email was simulated."
+      };
+    }
+    throw error;
   }
-
-  return {
-    id: data?.id ?? null
-  };
 }

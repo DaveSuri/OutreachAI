@@ -41,3 +41,40 @@ export async function generatePersonalizedDraft(input: { name?: string | null; c
 
   return completion.choices[0]?.message?.content?.trim() || "Hi, quick idea for your team. Open to chat?";
 }
+
+export async function generateThinkingInsight(input: {
+  name?: string | null;
+  company?: string | null;
+  priorDraft?: string | null;
+  prompt?: string | null;
+}) {
+  const fallback = `Focus on a concrete business pain point at ${input.company || "the company"} and offer one low-friction next step.`;
+  const openai = getOpenAIClient();
+
+  if (!openai) {
+    return fallback;
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an outreach strategist. Return a concise 'thinking note' (2 sentences max) for a follow-up email angle."
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          name: input.name ?? null,
+          company: input.company ?? null,
+          priorDraft: input.priorDraft ?? null,
+          prompt: input.prompt ?? "Think of the best follow-up angle to increase reply chance."
+        })
+      }
+    ]
+  });
+
+  return completion.choices[0]?.message?.content?.trim() || fallback;
+}

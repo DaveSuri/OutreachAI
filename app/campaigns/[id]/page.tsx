@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileUp, Play, Sparkles, Undo2, UserPlus } from "lucide-react";
-import { addLead, generateDrafts, simulateReply, startCampaign, uploadLeads } from "@/src/actions";
+import { FileUp, Play, Send, Sparkles, Undo2, UserPlus } from "lucide-react";
+import { addLead, generateDrafts, sendLeadEmailNow, simulateReply, startCampaign, uploadLeads } from "@/src/actions";
 import { prisma } from "@/src/lib/db";
+import { cn } from "@/src/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,9 +34,13 @@ type CampaignPageProps = {
   params: {
     id: string;
   };
+  searchParams?: {
+    notice?: string;
+    tone?: "success" | "warning" | "error";
+  };
 };
 
-export default async function CampaignPage({ params }: CampaignPageProps) {
+export default async function CampaignPage({ params, searchParams }: CampaignPageProps) {
   const campaign = await prisma.campaign.findUnique({
     where: { id: params.id },
     include: {
@@ -59,10 +64,10 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
     notFound();
   }
 
-  const pendingCount = campaign.leads.filter((lead) => lead.status === "PENDING").length;
+  const pendingCount = campaign.leads.filter((lead) => lead.status !== "REPLIED" && lead.status !== "BOUNCED").length;
   const draftedCount = campaign.leads.filter((lead) => lead.status === "DRAFTED").length;
-  const generateDraftsAction = generateDrafts.bind(null, campaign.id);
-  const startCampaignAction = startCampaign.bind(null, campaign.id);
+  const notice = searchParams?.notice;
+  const tone = searchParams?.tone ?? "success";
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
@@ -76,6 +81,19 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
           Back to Dashboard
         </Link>
       </div>
+
+      {notice && (
+        <div
+          className={cn(
+            "rounded-xl border px-4 py-3 text-sm",
+            tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+            tone === "warning" && "border-amber-200 bg-amber-50 text-amber-900",
+            tone === "error" && "border-rose-200 bg-rose-50 text-rose-800"
+          )}
+        >
+          {notice}
+        </div>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
@@ -129,18 +147,35 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
               <p>{draftedCount} drafted leads</p>
             </div>
 
-            <form action={generateDraftsAction}>
+            <form action={generateDrafts} className="space-y-2">
+              <input type="hidden" name="campaignId" value={campaign.id} />
               <Button type="submit" className="w-full" disabled={pendingCount === 0}>
                 <Sparkles className="h-4 w-4" />
-                {pendingCount === 0 ? "No Pending Leads" : "Generate Drafts"}
+                {pendingCount === 0 ? "No Eligible Leads" : "Generate Drafts"}
               </Button>
+              <p className="text-xs text-slate-500">Generates AI drafts for up to 5 leads in parallel batches.</p>
             </form>
 
-            <form action={startCampaignAction}>
+            <form action={startCampaign} className="space-y-2">
+              <input type="hidden" name="campaignId" value={campaign.id} />
+              <div>
+                <Label htmlFor="waitDuration">Wait between Email 1 and Email 2</Label>
+                <Input id="waitDuration" name="waitDuration" defaultValue="2 days" placeholder="2 days" />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" name="enableThinking" />
+                Enable AI thinking between emails
+              </label>
+              <Textarea
+                name="thinkingPrompt"
+                placeholder="Optional: what should AI think about before follow-up? (e.g., product fit, pain points, timing)"
+                className="min-h-16"
+              />
               <Button type="submit" className="w-full" variant="secondary" disabled={draftedCount === 0}>
                 <Play className="h-4 w-4" />
                 {draftedCount === 0 ? "No Drafts to Start" : "Start Campaign"}
               </Button>
+              <p className="text-xs text-slate-500">Runs durable Inngest workflow with safety lock check before follow-up send.</p>
             </form>
           </CardContent>
         </Card>
@@ -194,11 +229,21 @@ export default async function CampaignPage({ params }: CampaignPageProps) {
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">{lead.emailLogs[0]?.sentAt?.toLocaleString() || "-"}</TableCell>
                     <TableCell className="text-right">
-                      <form action={simulateReply.bind(null, lead.id)} className="inline-block">
-                        <Button type="submit" variant="outline" size="sm" disabled={lead.status === "REPLIED"}>
-                          {lead.status === "REPLIED" ? "Already Replied" : "Simulate Reply"}
-                        </Button>
-                      </form>
+                      <div className="flex items-center justify-end gap-2">
+                        <form action={sendLeadEmailNow} className="inline-block">
+                          <input type="hidden" name="leadId" value={lead.id} />
+                          <Button type="submit" variant="secondary" size="sm">
+                            <Send className="h-3 w-3" />
+                            Send
+                          </Button>
+                        </form>
+                        <form action={simulateReply} className="inline-block">
+                          <input type="hidden" name="leadId" value={lead.id} />
+                          <Button type="submit" variant="outline" size="sm" disabled={lead.status === "REPLIED"}>
+                            {lead.status === "REPLIED" ? "Already Replied" : "Simulate Reply"}
+                          </Button>
+                        </form>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
