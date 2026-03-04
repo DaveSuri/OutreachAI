@@ -1,8 +1,10 @@
-import { LeadStatus } from "@prisma/client";
+import { DraftStatus, LeadStatus, Prisma } from "@prisma/client";
 import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { prisma } from "@/src/lib/db";
 import { inngest } from "@/src/lib/inngest";
+import { generateReplyDraft } from "@/src/lib/openai";
+import { sendResendEmail } from "@/src/lib/resend";
 
 type ResendInboundPayload = {
   type?: string;
@@ -26,6 +28,18 @@ function extractEmail(from: string | { email?: string } | undefined) {
 
   const angleMatch = from.match(/<([^>]+)>/);
   return (angleMatch?.[1] || from).trim().toLowerCase();
+}
+
+function toPlainText(text?: string, html?: string) {
+  if (text?.trim()) {
+    return text.trim();
+  }
+
+  if (html?.trim()) {
+    return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  return "";
 }
 
 export async function POST(request: Request) {
@@ -77,24 +91,101 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: true, reason: "lead-not-found" });
   }
 
-  await prisma.lead.update({
+  const messageId = payload.data?.message_id?.trim() || `resend_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const textBody = toPlainText(payload.data?.text, payload.data?.html);
+
+  let duplicateInbound = false;
+  try {
+    await prisma.inboundEmail.create({
+      data: {
+        leadId: lead.id,
+        providerMessageId: messageId,
+        fromEmail,
+        subject: payload.data?.subject || null,
+        body: textBody || "(empty body)",
+        raw: payload as Prisma.InputJsonValue
+      }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      duplicateInbound = true;
+    } else {
+      throw error;
+    }
+  }
+
+  await prisma.lead.updateMany({
     where: { id: lead.id },
     data: {
       status: LeadStatus.REPLIED,
-      repliedAt: new Date()
+      repliedAt: new Date(),
+      version: {
+        increment: 1
+      }
     }
   });
 
-  await inngest.send({
-    name: "lead/replied",
-    data: {
-      leadId: lead.id,
-      campaignId: lead.campaignId,
-      fromEmail,
-      subject: payload.data?.subject,
-      messageId: payload.data?.message_id
-    }
-  });
+  if (!duplicateInbound) {
+    let draftId: string | null = null;
+    const existingDraft = await prisma.draftResponse.findFirst({
+      where: {
+        leadId: lead.id,
+        incomingEmail: textBody || null,
+        status: DraftStatus.PENDING_APPROVAL
+      },
+      select: {
+        id: true
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
 
-  return NextResponse.json({ ok: true, leadId: lead.id, status: "REPLIED" });
+    if (existingDraft) {
+      draftId = existingDraft.id;
+    } else {
+      const generated = await generateReplyDraft({
+        incomingEmail: textBody || "Lead replied with an empty body.",
+        leadName: fromEmail,
+        company: null
+      });
+
+      const createdDraft = await prisma.draftResponse.create({
+        data: {
+          leadId: lead.id,
+          incomingEmail: textBody || null,
+          generatedSubject: generated.subject,
+          generatedBody: generated.body,
+          status: DraftStatus.PENDING_APPROVAL
+        },
+        select: {
+          id: true
+        }
+      });
+      draftId = createdDraft.id;
+
+      if (process.env.ALERT_EMAIL_TO) {
+        await sendResendEmail({
+          to: process.env.ALERT_EMAIL_TO,
+          subject: `New Reply from ${fromEmail} - Draft ready`,
+          html: `<p>Inbound reply received from ${fromEmail}. Draft ID: ${createdDraft.id}</p>`
+        });
+      }
+    }
+
+    await inngest.send({
+      name: "lead/reply.received",
+      data: {
+        leadId: lead.id,
+        campaignId: lead.campaignId,
+        fromEmail,
+        subject: payload.data?.subject,
+        textBody,
+        messageId,
+        draftId
+      }
+    });
+  }
+
+  return NextResponse.json({ ok: true, leadId: lead.id, status: "REPLIED", duplicateInbound });
 }

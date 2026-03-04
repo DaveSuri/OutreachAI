@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, BarChart3, FolderKanban, Plus, Users } from "lucide-react";
+import { GeminiChat } from "@/components/GeminiChat";
 import { createCampaign } from "@/src/actions";
 import { prisma } from "@/src/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +125,16 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Voice Assistant</CardTitle>
+          <CardDescription>Ask CRM questions using Gemini tool-calling. Example: &quot;How are we doing today?&quot;</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GeminiChat />
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DraftStatus } from "@prisma/client";
 import { FileUp, Play, Send, Sparkles, Undo2, UserPlus } from "lucide-react";
-import { addLead, generateDrafts, sendLeadEmailNow, simulateReply, startCampaign, uploadLeads } from "@/src/actions";
+import {
+  addLead,
+  approveDraft,
+  generateDrafts,
+  rejectDraft,
+  sendLeadEmailNow,
+  simulateReply,
+  startCampaign,
+  uploadLeads
+} from "@/src/actions";
 import { prisma } from "@/src/lib/db";
 import { cn } from "@/src/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -41,24 +51,48 @@ type CampaignPageProps = {
 };
 
 export default async function CampaignPage({ params, searchParams }: CampaignPageProps) {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: params.id },
-    include: {
-      leads: {
-        orderBy: {
-          createdAt: "desc"
-        },
-        include: {
-          emailLogs: {
-            orderBy: {
-              sentAt: "desc"
-            },
-            take: 1
+  const [campaign, pendingDrafts] = await Promise.all([
+    prisma.campaign.findUnique({
+      where: { id: params.id },
+      include: {
+        leads: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          include: {
+            emailLogs: {
+              orderBy: {
+                sentAt: "desc"
+              },
+              take: 1
+            }
           }
         }
       }
-    }
-  });
+    }),
+    prisma.draftResponse.findMany({
+      where: {
+        status: DraftStatus.PENDING_APPROVAL,
+        lead: {
+          campaignId: params.id
+        }
+      },
+      include: {
+        lead: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            company: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      },
+      take: 25
+    })
+  ]);
 
   if (!campaign) {
     notFound();
@@ -250,6 +284,56 @@ export default async function CampaignPage({ params, searchParams }: CampaignPag
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Reply Draft Approvals</CardTitle>
+          <CardDescription>Review and approve AI reply drafts before sending.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pendingDrafts.length === 0 && <p className="text-sm text-slate-500">No drafts waiting for approval.</p>}
+
+          {pendingDrafts.map((draft) => (
+            <div key={draft.id} className="rounded-xl border border-slate-200 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{draft.lead.name || draft.lead.email}</p>
+                  <p className="text-xs text-slate-500">
+                    {draft.lead.company || "Unknown company"} - {draft.createdAt.toLocaleString()}
+                  </p>
+                </div>
+                <Badge variant="warning">PENDING_APPROVAL</Badge>
+              </div>
+
+              <div className="mt-3 space-y-2 text-sm">
+                <p className="font-medium text-slate-900">Incoming</p>
+                <p className="rounded-lg bg-slate-50 p-2 text-slate-700">{draft.incomingEmail || "No incoming message body available."}</p>
+                <p className="font-medium text-slate-900">Subject</p>
+                <p className="rounded-lg bg-slate-50 p-2 text-slate-700">{draft.generatedSubject}</p>
+                <p className="font-medium text-slate-900">Body</p>
+                <Textarea value={draft.generatedBody} readOnly className="min-h-24 bg-slate-50 text-xs" />
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <form action={approveDraft}>
+                  <input type="hidden" name="draftId" value={draft.id} />
+                  <input type="hidden" name="campaignId" value={campaign.id} />
+                  <Button type="submit" size="sm">
+                    Approve & Queue Send
+                  </Button>
+                </form>
+                <form action={rejectDraft}>
+                  <input type="hidden" name="draftId" value={draft.id} />
+                  <input type="hidden" name="campaignId" value={campaign.id} />
+                  <Button type="submit" size="sm" variant="outline">
+                    Reject
+                  </Button>
+                </form>
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </main>

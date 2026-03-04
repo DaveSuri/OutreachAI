@@ -1,8 +1,7 @@
-import { DraftStatus } from "@prisma/client";
+import { DraftStatus, EmailDeliveryStatus, LeadStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { events } from "@/lib/events";
-import { inngest } from "@/lib/inngest";
+import { sendEmail } from "@/lib/email/resend";
 
 type Params = {
   params: {
@@ -17,9 +16,14 @@ export async function POST(request: Request, { params }: Params) {
 
   const draft = await prisma.draftResponse.findUnique({
     where: { id: draftId },
-    select: {
-      id: true,
-      status: true
+    include: {
+      lead: {
+        select: {
+          id: true,
+          email: true,
+          repliedAt: true
+        }
+      }
     }
   });
 
@@ -31,13 +35,65 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({ error: "Draft is not pending approval" }, { status: 409 });
   }
 
-  await inngest.send({
-    name: events.draftApproved,
-    data: {
-      draftId,
-      approvedBy
-    }
+  if (draft.lead.repliedAt && draft.lead.repliedAt > draft.createdAt) {
+    await prisma.draftResponse.update({
+      where: {
+        id: draft.id
+      },
+      data: {
+        status: DraftStatus.REJECTED
+      }
+    });
+
+    return NextResponse.json({ error: "Draft became stale due to a newer reply" }, { status: 409 });
+  }
+
+  const sent = await sendEmail({
+    to: draft.lead.email,
+    subject: draft.generatedSubject,
+    html: draft.generatedBody.replace(/\n/g, "<br />")
   });
 
-  return NextResponse.json({ queued: true, draftId, approvedBy });
+  await prisma.$transaction(async (tx) => {
+    await tx.draftResponse.update({
+      where: {
+        id: draft.id
+      },
+      data: {
+        status: DraftStatus.APPROVED
+      }
+    });
+
+    await tx.lead.update({
+      where: {
+        id: draft.lead.id
+      },
+      data: {
+        status: LeadStatus.CONTACTED,
+        lastEmailedAt: new Date(),
+        messageId: sent.id,
+        version: {
+          increment: 1
+        }
+      }
+    });
+
+    await tx.emailLog.create({
+      data: {
+        leadId: draft.lead.id,
+        subject: draft.generatedSubject,
+        body: draft.generatedBody,
+        stepName: "APPROVED_DRAFT",
+        status: EmailDeliveryStatus.sent,
+        messageId: sent.id
+      }
+    });
+  });
+
+  return NextResponse.json({
+    sent: true,
+    draftId,
+    approvedBy,
+    delivery: sent.status
+  });
 }

@@ -1,12 +1,12 @@
 "use server";
 
-import { EmailDeliveryStatus, LeadStatus } from "@prisma/client";
+import { DraftStatus, EmailDeliveryStatus, LeadStatus } from "@prisma/client";
 import Papa from "papaparse";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/src/lib/db";
 import { inngest } from "@/src/lib/inngest";
-import { generatePersonalizedDraft } from "@/src/lib/openai";
+import { generatePersonalizedDraft, generateReplyDraft } from "@/src/lib/openai";
 import { sendResendEmail } from "@/src/lib/resend";
 
 type ParsedLead = {
@@ -362,21 +362,192 @@ export async function simulateReply(formData: FormData) {
     throw new Error("Lead ID is required");
   }
 
-  const lead = await prisma.lead.update({
-    where: {
-      id: leadId
-    },
-    data: {
-      status: LeadStatus.REPLIED,
-      repliedAt: new Date()
-    },
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
     select: {
+      id: true,
       campaignId: true,
-      email: true
+      email: true,
+      repliedAt: true
     }
   });
 
+  if (!lead) {
+    throw new Error("Lead not found");
+  }
+
+  const update = await prisma.lead.updateMany({
+    where: {
+      id: lead.id,
+      repliedAt: null
+    },
+    data: {
+      status: LeadStatus.REPLIED,
+      repliedAt: new Date(),
+      version: {
+        increment: 1
+      }
+    }
+  });
+
+  if (update.count > 0) {
+    const generated = await generateReplyDraft({
+      incomingEmail: "This is a simulated reply generated from the dashboard test action.",
+      leadName: lead.email,
+      company: null
+    });
+
+    const createdDraft = await prisma.draftResponse.create({
+      data: {
+        leadId: lead.id,
+        incomingEmail: "This is a simulated reply generated from the dashboard test action.",
+        generatedSubject: generated.subject,
+        generatedBody: generated.body,
+        status: DraftStatus.PENDING_APPROVAL
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (process.env.ALERT_EMAIL_TO) {
+      await sendResendEmail({
+        to: process.env.ALERT_EMAIL_TO,
+        subject: `New Reply from ${lead.email} - Draft ready`,
+        html: `<p>Simulated reply received for ${lead.email}. Draft ID: ${createdDraft.id}</p>`
+      });
+    }
+
+    await inngest.send({
+      name: "lead/reply.received",
+      data: {
+        leadId: lead.id,
+        campaignId: lead.campaignId,
+        fromEmail: lead.email,
+        subject: "Simulated reply",
+        textBody: "This is a simulated reply generated from the dashboard test action.",
+        messageId: `sim_${Date.now()}`
+      }
+    });
+  }
+
   revalidatePath(`/campaigns/${lead.campaignId}`);
   revalidatePath("/");
-  redirect(campaignPath(lead.campaignId, `Marked ${lead.email} as replied`, "success"));
+  if (update.count > 0) {
+    redirect(campaignPath(lead.campaignId, `Marked ${lead.email} as replied`, "success"));
+  }
+  redirect(campaignPath(lead.campaignId, `${lead.email} was already marked replied`, "warning"));
+}
+
+export async function approveDraft(formData: FormData) {
+  const draftId = normalize(formData.get("draftId"));
+  const campaignId = normalize(formData.get("campaignId"));
+
+  if (!draftId || !campaignId) {
+    throw new Error("Draft ID and campaign ID are required");
+  }
+
+  const draft = await prisma.draftResponse.findUnique({
+    where: { id: draftId },
+    include: {
+      lead: {
+        select: {
+          id: true,
+          email: true,
+          repliedAt: true
+        }
+      }
+    }
+  });
+
+  if (!draft) {
+    redirect(campaignPath(campaignId, "Draft not found", "error"));
+  }
+
+  if (draft.status !== DraftStatus.PENDING_APPROVAL) {
+    redirect(campaignPath(campaignId, "Draft already resolved", "warning"));
+  }
+
+  if (draft.lead.repliedAt && draft.lead.repliedAt > draft.createdAt) {
+    await prisma.draftResponse.update({
+      where: {
+        id: draft.id
+      },
+      data: {
+        status: DraftStatus.REJECTED
+      }
+    });
+
+    redirect(campaignPath(campaignId, "Draft became stale due to a newer reply", "warning"));
+  }
+
+  const sent = await sendResendEmail({
+    to: draft.lead.email,
+    subject: draft.generatedSubject,
+    html: draft.generatedBody.replace(/\n/g, "<br />")
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.draftResponse.update({
+      where: { id: draft.id },
+      data: {
+        status: DraftStatus.APPROVED
+      }
+    });
+
+    await tx.lead.update({
+      where: { id: draft.lead.id },
+      data: {
+        status: LeadStatus.CONTACTED,
+        lastEmailedAt: new Date(),
+        messageId: sent.id,
+        version: {
+          increment: 1
+        }
+      }
+    });
+
+    await tx.emailLog.create({
+      data: {
+        leadId: draft.lead.id,
+        status: EmailDeliveryStatus.sent,
+        sentAt: new Date(),
+        messageId: sent.id,
+        subject: draft.generatedSubject,
+        body: draft.generatedBody,
+        stepName: "APPROVED_DRAFT"
+      }
+    });
+  });
+
+  revalidatePath(`/campaigns/${campaignId}`);
+  redirect(
+    campaignPath(
+      campaignId,
+      sent.status === "mocked" ? sent.notice || "Draft approved (simulated send)" : "Draft approved and sent",
+      sent.status === "mocked" ? "warning" : "success"
+    )
+  );
+}
+
+export async function rejectDraft(formData: FormData) {
+  const draftId = normalize(formData.get("draftId"));
+  const campaignId = normalize(formData.get("campaignId"));
+
+  if (!draftId || !campaignId) {
+    throw new Error("Draft ID and campaign ID are required");
+  }
+
+  await prisma.draftResponse.updateMany({
+    where: {
+      id: draftId,
+      status: DraftStatus.PENDING_APPROVAL
+    },
+    data: {
+      status: DraftStatus.REJECTED
+    }
+  });
+
+  revalidatePath(`/campaigns/${campaignId}`);
+  redirect(campaignPath(campaignId, "Draft rejected", "warning"));
 }

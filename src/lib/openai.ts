@@ -78,3 +78,64 @@ export async function generateThinkingInsight(input: {
 
   return completion.choices[0]?.message?.content?.trim() || fallback;
 }
+
+export async function generateReplyDraft(input: {
+  incomingEmail: string;
+  leadName?: string | null;
+  company?: string | null;
+}) {
+  const fallbackSubject = `Re: ${input.company || "your note"}`;
+  const fallbackBody = [
+    `Hi ${input.leadName || "there"},`,
+    "",
+    "Thanks for your reply. I appreciate the context.",
+    "",
+    "Happy to tailor this to your current priorities and keep it practical. If useful, we can do a short call this week.",
+    "",
+    "Best,",
+    "Outreach AI"
+  ].join("\n");
+
+  const openai = getOpenAIClient();
+  if (!openai) {
+    return {
+      subject: fallbackSubject,
+      body: fallbackBody
+    };
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a B2B sales assistant. Return a JSON object with keys subject and body. Keep body concise, professional, and specific."
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          incomingEmail: input.incomingEmail,
+          leadName: input.leadName ?? null,
+          company: input.company ?? null
+        })
+      }
+    ],
+    response_format: { type: "json_object" }
+  });
+
+  const raw = completion.choices[0]?.message?.content ?? "";
+  try {
+    const parsed = JSON.parse(raw) as { subject?: string; body?: string };
+    return {
+      subject: parsed.subject?.trim() || fallbackSubject,
+      body: parsed.body?.trim() || fallbackBody
+    };
+  } catch {
+    return {
+      subject: fallbackSubject,
+      body: raw.trim() || fallbackBody
+    };
+  }
+}
